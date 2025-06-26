@@ -1,0 +1,581 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, User, Briefcase, Bot, FileText, CheckCircle, Clock, Settings, Bell, ChevronDown, ChevronRight, BarChart2, ShieldCheck, Handshake, Users, Info, ArrowRight, Sparkles, Wand2, Mail, X } from 'lucide-react';
+
+// Firebase Stub (Simulación para demostración)
+// En una aplicación real, esto se inicializaría con la configuración de Firebase
+const db = {
+  collection: (name) => ({
+    get: async () => {
+      console.log(`Simulando fetch de la colección: ${name}`);
+      if (name === 'lawyers') {
+        return {
+          docs: [
+            { id: 1, data: () => ({ name: 'Ana Pérez', specialty: 'Familia', location: 'Santiago', rating: 4.8, description: 'Especialista en divorcios y custodia. Mi enfoque es encontrar soluciones pacíficas y justas para las familias.' }) },
+            { id: 2, data: () => ({ name: 'Carlos Rojas', specialty: 'Comercial', location: 'Valparaíso', rating: 4.9, description: 'Asesoría a pymes y startups en constitución de sociedades y contratos mercantiles. Impulso tu negocio.' }) },
+            { id: 3, data: () => ({ name: 'Beatriz Soto', specialty: 'Laboral', location: 'Santiago', rating: 4.7, description: 'Defensa de los derechos de los trabajadores. Despidos injustificados, tutelas laborales y negociación colectiva.' }) },
+            { id: 4, data: () => ({ name: 'David Muñoz', specialty: 'Inmobiliario', location: 'Viña del Mar', rating: 4.6, description: 'Expertise en compraventa de propiedades, estudios de títulos y regularización de propiedades.' }) },
+          ]
+        };
+      }
+      return { docs: [] };
+    }
+  })
+};
+
+// --- Gemini API Integration ---
+// Helper function to call the Gemini API
+const callGeminiAPI = async (prompt) => {
+    console.log("Calling Gemini API with prompt:", prompt);
+    const apiKey = ""; // API key is handled by the environment
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    
+    const payload = {
+        contents: [{
+            role: "user",
+            parts: [{ text: prompt }]
+        }]
+    };
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            throw new Error(`API call failed with status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.candidates && result.candidates.length > 0 &&
+            result.candidates[0].content && result.candidates[0].content.parts &&
+            result.candidates[0].content.parts.length > 0) {
+            return result.candidates[0].content.parts[0].text;
+        } else {
+            console.error("Unexpected API response structure:", result);
+            return "No se pudo obtener una respuesta de la IA. Inténtalo de nuevo.";
+        }
+    } catch (error) {
+        console.error('Error calling Gemini API:', error);
+        return `Error al conectar con la IA: ${error.message}`;
+    }
+};
+
+
+// Componente para Asistente IA
+const AIAssistant = () => {
+  const [query, setQuery] = useState('');
+  const [textToSimplify, setTextToSimplify] = useState('');
+  const [situation, setSituation] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [activeAITab, setActiveAITab] = useState('chat');
+
+  const handleQuery = async () => {
+    if (!query.trim()) return;
+    const userMessage = query;
+    setQuery('');
+    await processAIRequest(userMessage, `Por favor, responde a la siguiente pregunta legal de forma clara y concisa, como un asistente informativo. No ofrezcas asesoramiento legal directo, sino información general. Pregunta: "${userMessage}"`);
+  };
+
+  const handleSimplify = async () => {
+    if (!textToSimplify.trim()) return;
+    const userMessage = `Por favor, simplifica este texto:\n\n"${textToSimplify}"`;
+    await processAIRequest(userMessage, `Simplifica el siguiente texto legal para que sea fácil de entender por alguien sin conocimientos jurídicos. Mantén la precisión del significado original. Texto a simplificar: "${textToSimplify}"`);
+    setTextToSimplify('');
+  };
+
+  const handlePrepareConsultation = async () => {
+    if (!situation.trim()) return;
+    const userMessage = `Mi situación es: ${situation}`;
+    await processAIRequest(userMessage, `Actúa como un asistente legal. Basado en la siguiente situación, genera una lista de 5 preguntas clave que el usuario debería hacer a su abogado y una lista de 3-5 documentos importantes que debería reunir. Formatea la respuesta claramente con títulos para 'Preguntas Clave' y 'Documentos a Reunir'. Situación: "${situation}"`);
+    setSituation('');
+  };
+
+  const processAIRequest = async (userMessage, prompt) => {
+    const newHistory = [...history, { role: 'user', text: userMessage }];
+    setHistory(newHistory);
+    setIsLoading(true);
+
+    const apiResponse = await callGeminiAPI(prompt);
+    
+    setHistory(prev => [...prev, { role: 'assistant', text: apiResponse }]);
+    setIsLoading(false);
+  }
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 h-full flex flex-col">
+      <div className="flex items-center mb-4">
+        <Bot className="text-blue-600 mr-3" size={24} />
+        <h3 className="text-xl font-bold text-gray-800">Asistente Legal IA ✨</h3>
+      </div>
+       <div className="flex border-b mb-4">
+          <button onClick={() => setActiveAITab('chat')} className={`py-2 px-4 text-sm ${activeAITab === 'chat' ? 'border-b-2 border-blue-600 font-semibold text-blue-600' : 'text-gray-500'}`}>Chat General</button>
+          <button onClick={() => setActiveAITab('simplify')} className={`py-2 px-4 text-sm ${activeAITab === 'simplify' ? 'border-b-2 border-blue-600 font-semibold text-blue-600' : 'text-gray-500'}`}>Simplificar Texto</button>
+          <button onClick={() => setActiveAITab('prepare')} className={`py-2 px-4 text-sm ${activeAITab === 'prepare' ? 'border-b-2 border-blue-600 font-semibold text-blue-600' : 'text-gray-500'}`}>Preparar Consulta</button>
+      </div>
+
+      <div className="flex-grow bg-gray-50 p-4 rounded-lg overflow-y-auto mb-4 border min-h-[300px]">
+        {history.map((entry, index) => (
+          <div key={index} className={`mb-3 flex ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`inline-block p-3 rounded-xl max-w-lg ${entry.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'}`}>
+              <p className="text-sm whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: entry.text.replace(/\n/g, '<br />') }} />
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="text-left">
+            <div className="inline-block p-3 rounded-xl bg-gray-200">
+              <div className="flex items-center">
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce mr-1"></div>
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-75 mr-1"></div>
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-150"></div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {activeAITab === 'chat' && (
+        <div className="flex">
+          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleQuery()} placeholder="Ej: ¿Qué es un recurso de protección?" className="w-full p-3 border rounded-l-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+          <button onClick={handleQuery} disabled={isLoading} className="bg-blue-600 text-white px-6 rounded-r-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300">Enviar</button>
+        </div>
+      )}
+      {activeAITab === 'simplify' && (
+         <div>
+          <textarea value={textToSimplify} onChange={(e) => setTextToSimplify(e.target.value)} placeholder="Pega aquí el texto legal que quieres simplificar..." className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none mb-2" rows="4"></textarea>
+          <button onClick={handleSimplify} disabled={isLoading} className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 flex items-center justify-center">
+            <Wand2 size={18} className="mr-2"/> Simplificar Texto ✨
+          </button>
+        </div>
+      )}
+      {activeAITab === 'prepare' && (
+         <div>
+          <textarea value={situation} onChange={(e) => setSituation(e.target.value)} placeholder="Describe brevemente tu situación legal. Ej: 'Fui despedido y creo que fue injustificado.'" className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none mb-2" rows="4"></textarea>
+          <button onClick={handlePrepareConsultation} disabled={isLoading} className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 flex items-center justify-center">
+            <Sparkles size={18} className="mr-2"/> Generar Guía de Consulta ✨
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Componente Modal
+const Modal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl transform transition-all">
+        <div className="flex justify-between items-center p-4 border-b">
+          <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={24} />
+          </button>
+        </div>
+        <div className="p-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// Componente para simular Contratos Inteligentes / Notarización Blockchain
+const SecureDocs = () => {
+    const [agreements, setAgreements] = useState([
+        { id: 1, title: 'Acuerdo de Servicios de Diseño Gráfico', status: 'Activo', parties: 'Cliente A, Proveedor B', hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', timestamp: '2024-06-25T10:30:00Z' },
+        { id: 2, title: 'Contrato de Arriendo Simple', status: 'Esperando Pago', parties: 'Arrendador C, Arrendatario D', hash: 'a1b2c3d4e5f6...', timestamp: '2024-06-26T14:00:00Z' }
+    ]);
+    const [selectedAgreement, setSelectedAgreement] = useState(null);
+
+    const handleConfirmPayment = (id) => {
+        setAgreements(agreements.map(a => a.id === id ? { ...a, status: 'Activo' } : a));
+        setSelectedAgreement(prev => ({...prev, status: 'Activo'}));
+    };
+
+    const hashDocument = async (text) => {
+      // Simulación de hashing.
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      let hash = 0;
+      for (let i = 0; i < text.length; i++) {
+          const char = text.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash;
+      }
+      return Math.abs(hash).toString(16).padStart(8, '0');
+    }
+    
+    const handleCreateAgreement = async () => {
+        const title = prompt("Título del nuevo acuerdo:");
+        if (title) {
+            const newId = agreements.length + 1;
+            const newHash = await hashDocument(title + new Date().toISOString());
+            const newAgreement = {
+                id: newId,
+                title: title,
+                status: 'Borrador',
+                parties: 'Sin asignar',
+                hash: newHash,
+                timestamp: new Date().toISOString()
+            };
+            setAgreements([...agreements, newAgreement]);
+        }
+    }
+
+    return (
+        <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+            <div className="flex items-center mb-4">
+                <ShieldCheck className="text-green-600 mr-3" size={24} />
+                <h3 className="text-xl font-bold text-gray-800">Documentos y Acuerdos Seguros</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">Gestiona acuerdos simples con estados automáticos y registro de integridad (simulado con Blockchain).</p>
+            <button onClick={handleCreateAgreement} className="mb-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">Crear Nuevo Acuerdo</button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h4 className="font-semibold text-gray-700 mb-2">Lista de Acuerdos</h4>
+                    <ul className="space-y-2">
+                        {agreements.map(agreement => (
+                            <li key={agreement.id} onClick={() => setSelectedAgreement(agreement)} className="p-3 bg-gray-50 border rounded-lg hover:bg-gray-100 cursor-pointer flex justify-between items-center">
+                                <span className="font-medium text-gray-800">{agreement.title}</span>
+                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${agreement.status === 'Activo' ? 'bg-green-100 text-green-800' : (agreement.status === 'Esperando Pago' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-200 text-gray-700')}`}>
+                                    {agreement.status}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+                <div>
+                    {selectedAgreement ? (
+                        <div className="bg-gray-100 p-4 rounded-lg border">
+                            <h4 className="text-lg font-bold mb-2">{selectedAgreement.title}</h4>
+                            <p className="text-sm mb-2"><strong>Partes:</strong> {selectedAgreement.parties}</p>
+                            <p className="text-sm mb-2"><strong>Estado:</strong> {selectedAgreement.status}</p>
+                            <div className="mt-4 pt-4 border-t">
+                                <h5 className="font-semibold text-sm flex items-center"><ShieldCheck size={16} className="mr-2"/>Registro de Integridad (Simulado)</h5>
+                                <p className="text-xs text-gray-600 mt-1"><strong>Timestamp:</strong> {new Date(selectedAgreement.timestamp).toLocaleString()}</p>
+                                <p className="text-xs text-gray-600 break-all"><strong>Hash:</strong> {selectedAgreement.hash}</p>
+                            </div>
+                            {selectedAgreement.status === 'Esperando Pago' && (
+                                <button onClick={() => handleConfirmPayment(selectedAgreement.id)} className="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                    Simular Confirmación de Pago
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="bg-gray-100 p-4 rounded-lg border h-full flex items-center justify-center">
+                            <p className="text-gray-500">Selecciona un acuerdo para ver los detalles.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Componente para buscar abogados
+const FindLawyer = () => {
+    const [lawyers, setLawyers] = useState([]);
+    const [filteredLawyers, setFilteredLawyers] = useState([]);
+    const [specialty, setSpecialty] = useState('');
+    const [location, setLocation] = useState('');
+
+    useEffect(() => {
+        const fetchLawyers = async () => {
+            const snapshot = await db.collection('lawyers').get();
+            const lawyersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setLawyers(lawyersData);
+            setFilteredLawyers(lawyersData);
+        };
+        fetchLawyers();
+    }, []);
+
+    useEffect(() => {
+        let result = lawyers;
+        if (specialty) {
+            result = result.filter(l => l.specialty === specialty);
+        }
+        if (location) {
+            result = result.filter(l => l.location === location);
+        }
+        setFilteredLawyers(result);
+    }, [specialty, location, lawyers]);
+
+    const specialties = useMemo(() => [...new Set(lawyers.map(l => l.specialty))], [lawyers]);
+    const locations = useMemo(() => [...new Set(lawyers.map(l => l.location))], [lawyers]);
+
+    return (
+        <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Encuentra a tu Abogado</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <select value={specialty} onChange={e => setSpecialty(e.target.value)} className="w-full p-3 border rounded-lg bg-white">
+                    <option value="">Todas las Especialidades</option>
+                    {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select value={location} onChange={e => setLocation(e.target.value)} className="w-full p-3 border rounded-lg bg-white">
+                    <option value="">Todas las Ubicaciones</option>
+                    {locations.map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+            </div>
+            <div className="space-y-4">
+                {filteredLawyers.map(lawyer => (
+                    <div key={lawyer.id} className="p-4 border rounded-lg flex items-center space-x-4 hover:bg-gray-50 transition-colors">
+                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                          <User className="text-blue-600" />
+                        </div>
+                        <div className="flex-grow">
+                            <h4 className="font-bold text-gray-900">{lawyer.name}</h4>
+                            <p className="text-sm text-gray-600">{lawyer.specialty} - {lawyer.location}</p>
+                            <p className="text-xs text-gray-500 mt-1">{lawyer.description}</p>
+                        </div>
+                        <div className="text-right">
+                            <div className="flex items-center text-yellow-500 font-bold">
+                                {lawyer.rating} <CheckCircle size={16} className="ml-1" />
+                            </div>
+                            <button className="mt-1 bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">Contactar</button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// Componente de Panel para Abogados (Legal Project Management)
+const LawyerDashboard = () => {
+    const [cases, setCases] = useState([
+        { id: 'C-001', client: 'Empresa XYZ', matter: 'Constitución de Sociedad', status: 'En Progreso', progress: 60, tasks: [] },
+        { id: 'C-002', client: 'Juanita Rosas', matter: 'Contrato de Arriendo', status: 'Completado', progress: 100, tasks: [{ id: 1, text: 'Revisar cláusula de garantía.', done: true}, {id: 2, text: 'Enviar copia final al cliente.', done: true}] },
+        { id: 'C-003', client: 'Pymes del Sur', matter: 'Revisión Laboral', status: 'Iniciado', progress: 20, tasks: [] },
+    ]);
+    const [isLoadingAI, setIsLoadingAI] = useState(null); // stores ID of case being processed
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [modalContent, setModalContent] = useState('');
+    const [modalTitle, setModalTitle] = useState('');
+    const [isDraftingEmail, setIsDraftingEmail] = useState(null); // stores ID of case
+
+
+    const handleGenerateTasks = async (caseId, caseMatter) => {
+        setIsLoadingAI(caseId);
+        const prompt = `Actúa como un asistente de Legal Project Management. Crea una lista concisa de 5 a 7 tareas clave para un proyecto legal sobre "${caseMatter}". Formatea la respuesta como una lista separada por saltos de línea, sin numeración.`;
+        const taskResponse = await callGeminiAPI(prompt);
+        
+        const newTasks = taskResponse.split('\n').filter(t => t.trim() !== '').map((text, index) => ({ id: Date.now() + index, text, done: false }));
+
+        setCases(prevCases => prevCases.map(c => c.id === caseId ? { ...c, tasks: [...c.tasks, ...newTasks] } : c));
+        setIsLoadingAI(null);
+    };
+    
+    const handleDraftEmail = async (caseDetails) => {
+        setIsDraftingEmail(caseDetails.id);
+        setModalTitle(`Borrador de Correo para: ${caseDetails.client}`);
+        setModalContent("Generando borrador con IA...");
+        setIsModalOpen(true);
+        const prompt = `Eres un abogado en Chile. Redacta un correo electrónico profesional y claro para el cliente '${caseDetails.client}' sobre su caso de '${caseDetails.matter}'. El estado actual es '${caseDetails.status}'. Informa brevemente sobre los próximos pasos basándote en el plan de acción (si no hay tareas, menciona que pronto definirán los próximos pasos). Mantén un tono tranquilizador y profesional.`;
+        const emailDraft = await callGeminiAPI(prompt);
+        setModalContent(emailDraft);
+        setIsDraftingEmail(null);
+    };
+
+    return (
+      <>
+        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalTitle}>
+            <textarea
+                className="w-full h-64 p-2 border rounded-md bg-gray-50 font-mono text-sm"
+                value={modalContent}
+                readOnly
+            />
+            <button onClick={() => navigator.clipboard.writeText(modalContent)} className="mt-4 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700">Copiar Texto</button>
+        </Modal>
+
+        <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+            <div className="flex items-center mb-4">
+              <Briefcase className="text-blue-600 mr-3" size={24} />
+              <h3 className="text-xl font-bold text-gray-800">Gestión de Casos (LPM)</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">Supervisa el alcance, tiempo y costo de tus asuntos legales. Usa la IA para optimizar tu flujo de trabajo.</p>
+            <div className="space-y-4">
+              {cases.map(c => (
+                <div key={c.id} className="p-4 border rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <div>
+                      <h4 className="font-bold text-gray-800">{c.matter}</h4>
+                      <p className="text-sm text-gray-500">{c.client} - {c.id}</p>
+                    </div>
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${c.status === 'Completado' ? 'bg-green-100 text-green-800' : (c.status === 'En Progreso' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800')}`}>
+                        {c.status}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-3">
+                    <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${c.progress}%` }}></div>
+                  </div>
+                  
+                  <div className="mt-3 pt-3 border-t">
+                     <h5 className="font-semibold text-sm mb-2">Plan de Acción:</h5>
+                     {c.tasks.length > 0 ? (
+                        <div className="space-y-2">
+                            {c.tasks.map(task => (
+                              <div key={task.id} className="flex items-center bg-gray-50 p-2 rounded-lg">
+                                <input type="checkbox" checked={task.done} readOnly className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+                                <label className={`ml-3 text-sm ${task.done ? 'text-gray-500 line-through' : 'text-gray-700'}`}>{task.text}</label>
+                              </div>
+                            ))}
+                        </div>
+                     ) : (
+                        <p className="text-xs text-gray-500">Aún no hay tareas para este caso.</p>
+                     )}
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                         <button 
+                            onClick={() => handleGenerateTasks(c.id, c.matter)}
+                            disabled={isLoadingAI === c.id}
+                            className="w-full bg-blue-50 text-blue-700 text-sm font-semibold py-2 px-4 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center disabled:bg-gray-200">
+                            {isLoadingAI === c.id ? (
+                                <><div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin mr-2"></div>Generando...</>
+                            ) : (
+                                <><Sparkles size={16} className="mr-2"/> Generar Plan de Acción ✨</>
+                            )}
+                         </button>
+                         <button
+                            onClick={() => handleDraftEmail(c)}
+                            disabled={isDraftingEmail === c.id}
+                            className="w-full bg-green-50 text-green-700 text-sm font-semibold py-2 px-4 rounded-lg hover:bg-green-100 transition-colors flex items-center justify-center disabled:bg-gray-200">
+                             {isDraftingEmail === c.id ? (
+                                 <><div className="w-4 h-4 border-2 border-green-300 border-t-green-600 rounded-full animate-spin mr-2"></div>Redactando...</>
+                             ) : (
+                                 <><Mail size={16} className="mr-2"/> Redactar Correo de Avance ✨</>
+                             )}
+                         </button>
+                     </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+        </div>
+      </>
+    );
+}
+
+// Página de Inicio
+const LandingPage = ({ onSelectRole }) => {
+    return (
+        <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
+            <div className="text-center mb-8">
+                <Handshake className="text-blue-600 mx-auto mb-4" size={64}/>
+                <h1 className="text-5xl font-extrabold text-gray-900">LexConnecta</h1>
+                <p className="text-xl text-gray-600 mt-2">Cerrando la brecha entre la justicia y tú.</p>
+                <p className="max-w-2xl mx-auto mt-4 text-gray-500">
+                    Una plataforma integral que une a ciudadanos y empresas con profesionales del derecho,
+                    impulsada por tecnología de vanguardia para ofrecer soluciones legales claras, eficientes y seguras.
+                </p>
+            </div>
+            <div className="bg-white p-8 rounded-2xl shadow-xl border w-full max-w-4xl">
+                <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">¿Cómo podemos ayudarte hoy?</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div onClick={() => onSelectRole('citizen')} className="group p-6 border rounded-xl hover:bg-blue-50 hover:shadow-md transition-all cursor-pointer">
+                        <div className="flex items-center mb-2">
+                           <Users size={24} className="text-blue-600 mr-3"/>
+                           <h3 className="text-xl font-bold text-gray-800">Soy un Ciudadano o Empresa</h3>
+                        </div>
+                        <p className="text-gray-600 mb-4">Necesito resolver un problema legal, encontrar un abogado o entender un documento.</p>
+                        <span className="font-semibold text-blue-600 flex items-center group-hover:underline">
+                            Empezar aquí <ArrowRight size={18} className="ml-1"/>
+                        </span>
+                    </div>
+                    <div onClick={() => onSelectRole('lawyer')} className="group p-6 border rounded-xl hover:bg-green-50 hover:shadow-md transition-all cursor-pointer">
+                       <div className="flex items-center mb-2">
+                           <Briefcase size={24} className="text-green-600 mr-3"/>
+                           <h3 className="text-xl font-bold text-gray-800">Soy un Abogado</h3>
+                        </div>
+                        <p className="text-gray-600 mb-4">Busco optimizar mi práctica, gestionar mis casos eficientemente y conectar con nuevos clientes.</p>
+                        <span className="font-semibold text-green-600 flex items-center group-hover:underline">
+                            Acceder a mi panel <ArrowRight size={18} className="ml-1"/>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <footer className="mt-12 text-center text-gray-500">
+                <p>Cumpliendo con la Ley de Protección de Datos y Ciberseguridad de Chile.</p>
+                <p>&copy; 2024 LexConnecta. Todos los derechos reservados.</p>
+            </footer>
+        </div>
+    );
+};
+
+// Componente Principal de la App
+export default function App() {
+  const [userType, setUserType] = useState(null); // 'citizen', 'lawyer'
+  const [activeTab, setActiveTab] = useState('findLawyer'); // Pestaña inicial para citizen
+  
+  useEffect(() => {
+    // Resetear la pestaña activa al cambiar de rol
+    if (userType === 'citizen') {
+        setActiveTab('findLawyer');
+    } else if (userType === 'lawyer') {
+        setActiveTab('lpm');
+    }
+  }, [userType]);
+
+  if (!userType) {
+      return <LandingPage onSelectRole={setUserType} />;
+  }
+  
+  const CitizenView = () => (
+    <div className="p-4 md:p-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-6">Panel del Ciudadano</h2>
+        <div className="flex border-b mb-6">
+            <button onClick={() => setActiveTab('findLawyer')} className={`py-2 px-4 ${activeTab === 'findLawyer' ? 'border-b-2 border-blue-600 font-semibold text-blue-600' : 'text-gray-500'}`}>Buscar Abogado</button>
+            <button onClick={() => setActiveTab('aiAssistant')} className={`py-2 px-4 ${activeTab === 'aiAssistant' ? 'border-b-2 border-blue-600 font-semibold text-blue-600' : 'text-gray-500'}`}>Asistente IA ✨</button>
+        </div>
+        {activeTab === 'findLawyer' && <FindLawyer />}
+        {activeTab === 'aiAssistant' && <AIAssistant />}
+    </div>
+  );
+
+  const LawyerView = () => (
+     <div className="p-4 md:p-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-6">Panel del Abogado</h2>
+        <div className="flex border-b mb-6">
+            <button onClick={() => setActiveTab('lpm')} className={`py-2 px-4 ${activeTab === 'lpm' ? 'border-b-2 border-blue-600 font-semibold text-blue-600' : 'text-gray-500'}`}>Gestión de Casos ✨</button>
+            <button onClick={() => setActiveTab('secureDocs')} className={`py-2 px-4 ${activeTab === 'secureDocs' ? 'border-b-2 border-blue-600 font-semibold text-blue-600' : 'text-gray-500'}`}>Acuerdos Seguros</button>
+        </div>
+        {activeTab === 'lpm' && <LawyerDashboard />}
+        {activeTab === 'secureDocs' && <SecureDocs />}
+    </div>
+  )
+
+  const MainView = userType === 'citizen' ? CitizenView : LawyerView;
+
+  return (
+    <div className="min-h-screen bg-gray-100 font-sans">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+                <Handshake className="text-blue-600" size={32}/>
+                <span className="font-bold text-xl ml-2 text-gray-800">LexConnecta</span>
+            </div>
+            <div className="flex items-center">
+                <button onClick={() => setUserType(null)} className="text-sm text-gray-600 hover:text-blue-600">Cambiar Rol</button>
+                <Bell className="ml-4 text-gray-500"/>
+                <div className="ml-4 flex items-center">
+                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                      <User size={18} className="text-gray-600"/>
+                    </div>
+                    <span className="ml-2 text-sm font-medium text-gray-700">{userType === 'citizen' ? 'Ciudadano' : 'Abogado'}</span>
+                </div>
+            </div>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          <MainView />
+      </main>
+    </div>
+  );
+}
